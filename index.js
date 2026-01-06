@@ -1,14 +1,13 @@
 import express from "express";
-import fetch from "node-fetch";
 import dotenv from "dotenv";
 import crypto from "crypto";
+import { logMessage } from "./bot.js"; // 🔥 ESTO FALTABA
 
 dotenv.config();
 
 const app = express();
 app.use(express.json());
 
-/* Sesiones activas */
 const sessions = new Map();
 
 /* ===============================
@@ -17,22 +16,24 @@ const sessions = new Map();
 app.post("/create-url", async (req, res) => {
   const { token } = req.body;
 
-  /* 🔒 BLOQUEO DE EXTERNOS */
   if (token !== process.env.SECRET_TOKEN) {
-    console.log("🚨 INTENTO EXTERNO BLOQUEADO");
-    console.log("IP:", req.headers["x-forwarded-for"] || req.socket.remoteAddress);
-    console.log("Body:", req.body);
+    const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
 
-    return res.status(403).json({
-      error: "Forbidden"
-    });
+    console.log("🚨 INTENTO EXTERNO BLOQUEADO:", ip);
+
+    await logMessage(
+      process.env.SECURITY_CHANNEL_ID,
+      `🚨 **INTENTO EXTERNO BLOQUEADO**
+IP: \`${ip}\`
+Ruta: /create-url
+Body: \`${JSON.stringify(req.body)}\``
+    );
+
+    return res.status(403).json({ error: "Forbidden" });
   }
 
   const sessionId = crypto.randomUUID();
-
-  sessions.set(sessionId, {
-    created: Date.now()
-  });
+  sessions.set(sessionId, { created: Date.now() });
 
   res.json({
     success: true,
@@ -41,32 +42,28 @@ app.post("/create-url", async (req, res) => {
 });
 
 /* ===============================
-   ROBLOX MANDA EL WEBHOOK AQUÍ
+   ROBLOX ENVÍA WEBHOOK
    =============================== */
 app.post("/session/:id", async (req, res) => {
   if (!sessions.has(req.params.id)) {
-    console.log("⚠️ Session inválida:", req.params.id);
     return res.sendStatus(404);
   }
 
   try {
     const response = await fetch(process.env.DISCORD_WEBHOOK, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req.body)
     });
 
     if (!response.ok) {
-      console.log("Error enviando webhook a Discord");
-      console.log(await response.text());
+      console.log("❌ Error webhook Discord");
       return res.sendStatus(500);
     }
 
     res.sendStatus(200);
   } catch (err) {
-    console.log("Error interno:", err);
+    console.error("❌ Error interno:", err);
     res.sendStatus(500);
   }
 });
@@ -87,17 +84,25 @@ app.get("/session/:id", (req, res) => {
 });
 
 /* ===============================
-   CUALQUIER RUTA RARA = EXTERNO
+   CUALQUIER OTRA RUTA = ATAQUE
    =============================== */
-app.all("*", (req, res) => {
-  console.log("REQUEST EXTERNO DETECTADO");
-  console.log("Ruta:", req.originalUrl);
-  console.log("IP:", req.headers["x-forwarded-for"] || req.socket.remoteAddress);
-  console.log("Método:", req.method);
+app.all("*", async (req, res) => {
+  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+
+  console.log("🚨 REQUEST EXTERNO:", ip);
+
+  await logMessage(
+    process.env.SECURITY_CHANNEL_ID,
+    `🚨 **REQUEST EXTERNO DETECTADO**
+IP: \`${ip}\`
+Ruta: \`${req.originalUrl}\`
+Método: \`${req.method}\``
+  );
 
   res.status(404).send("Not Found");
 });
 
-app.listen(process.env.PORT, () => {
-  console.log("Hellfire Backend activo");
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🔥 Hellfire Backend activo en puerto ${PORT}`);
 });
