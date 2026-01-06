@@ -102,7 +102,7 @@ Método: \`${req.method}\``
   res.status(404).send("Not Found");
 });
 
-const PORT = process.env.PORT || 4167;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🔥 Hellfire Backend activo en puerto ${PORT}`);
 });
